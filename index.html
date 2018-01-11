@@ -1,4 +1,4 @@
-<title>warmtube</title>
+<title>☕️ warmtube</title>
 <meta charset="utf-8">
 
 <div id='app'>
@@ -23,15 +23,22 @@
            v-model='youtubeLinkInputSecondary'
            v-on:keyup.enter='postYoutubeSecondary'>
            
-    <youtube :video-id='youtubeIdPrimary' @ready='videoReady' @playing='videoPlaying' :player-vars='{ autoplay: 1 }'></youtube>
-    <youtube :video-id='youtubeIdSecondary' :player-vars='{ autoplay: 1 }'></youtube>
+    <youtube :video-id='youtubeIdPrimary' @ready='videoReadyPrimary' @playing='videoPlayingPrimary' :player-vars='{ autoplay: 1 }'></youtube>
+    <youtube :video-id='youtubeIdSecondary' @ready='videoReadySecondary' @playing='videoPlayingSecondary' :player-vars='{ autoplay: 1 }'></youtube>
+    
+    <input type='range' @input='faderChange' v-model='faderValue' />
   </div>
 </div>
 
 <style>
+  input {
+    text-align: center;
+  }
+
   .chat {
     width: 300px;
     margin: auto;
+    margin-bottom: 20px;
   }
   
   .chat__input {
@@ -43,6 +50,30 @@
   body {
     background-color: black;
   }
+  
+  .youtube {
+    display: flex;
+    flex-wrap: wrap;
+      justify-content: space-between;
+  }
+  
+  .youtube input {
+    max-width: 640px;
+    width: 50%;
+  }
+  
+  input[type='range'] {
+    margin: auto;
+    width: 175px;
+    margin-top: 20px;
+  }
+  
+  #app {
+    max-width: 1400px;
+    margin: auto;
+  }
+  
+  /* let's pretend that i don't give a fuck about the rules */
 </style>
 
 
@@ -62,6 +93,7 @@
     
     console.error('Receiving', data)
     Object.assign(window.data, data)
+    window.app.faderChange(null, true)
   });
 
   socket.on('request', function (data) {
@@ -84,7 +116,9 @@
       messages: window.data.messages,
       youtubeIdPrimary: window.data.youtubeIdPrimary,
       youtubeIdSecondary: window.data.youtubeIdSecondary,
-      youtubeTime: window.data.youtubeTime,
+      youtubeTimePrimary: window.data.youtubeTimePrimary,
+      youtubeTimeSecondary: window.data.youtubeTimeSecondary,
+      faderValue: window.data.faderValue,
     })
   }
 
@@ -94,31 +128,76 @@
     youtubeLinkInputPrimary: '',
     youtubeLinkInputSecondary: '',
     
-    youtubeIdPrimary: '',
-    youtubeIdSecondary: '',
-    youtubeTime: 0,
+    youtubeIdPrimary: 'p45fsJdjN4M',
+    youtubeIdSecondary: 'SWzqTQgNYyw',
+    youtubeTimePrimary: 0,
+    youtubeTimeSecondary: 0,
     messages: [],
+    faderValue: 0,
     
-    videoReady: function(player) {
-      console.error('ready')
-      player.playVideo()
+    videoReadyPrimary: function(player) {
+      window.app.playerPrimary = player
+      setTimeout(() => {
+        player.playVideo()
+      }, 1000)
+      
+      console.error('setting primary volume', 100 - window.app.faderValue)
+      window.app.playerPrimary.setVolume(100 - window.app.faderValue)
     },
     
-    videoPlayingInterval: null,
-    videoPlaying: function(player) {
-      console.error('playing')
-      clearInterval(this.videoPlayingInterval)
+    videoReadySecondary: function(player) {
+      window.app.playerSecondary = player
+      setTimeout(() => {
+        player.playVideo()
+      }, 1000)
       
-      console.error(window.data.youtubeTime, player.getCurrentTime())
-      if (Math.abs(window.data.youtubeTime - player.getCurrentTime()) > 1) {
+      console.error('setting secondary volume', window.app.faderValue)
+      window.app.playerSecondary.setVolume(window.app.faderValue)
+    },
+    
+    faderChange(event, noNOtify) {
+      console.error('faderChange: player secondary volume is', window.app.faderValue)
+      console.error('faderChange')
+      window.app.playerPrimary && window.app.playerPrimary.setVolume(100 - window.app.faderValue)
+      window.app.playerSecondary && window.app.playerSecondary.setVolume(window.app.faderValue)
+      
+      if (!noNOtify) notify()
+    },
+    
+    videoPlayingIntervalPrimary: null,
+    videoPlayingIntervalSecondary: null,
+    
+    videoPlayingPrimary: function(player) {
+      console.error('playing')
+      clearInterval(window.data.videoPlayingIntervalPrimary)
+      
+      console.error(window.data.youtubeTimePrimary, player.getCurrentTime())
+      if (Math.abs(window.data.youtubeTimePrimary - player.getCurrentTime()) > 1) {
         console.error('seeking')
-        window.data.youtubeTime += 3
-        player.seekTo(window.data.youtubeTime)
+        window.data.youtubeTimePrimary += 3
+        player.seekTo(window.data.youtubeTimePrimary)
       }
       
       console.error('videoPlaying')
-      this.videoPlayingInterval = setInterval(function() {
-        window.data.youtubeTime = Math.round(player.getCurrentTime())
+      window.data.videoPlayingIntervalPrimary = setInterval(function() {
+        window.data.youtubeTimePrimary = Math.round(player.getCurrentTime())
+      }, 1000)
+    },
+    
+    videoPlayingSecondary: function(player) {
+      console.error('playing secondary')
+      clearInterval(window.app.videoPlayingIntervalSecondary)
+      
+      console.error(window.data.youtubeTimeSecondary, player.getCurrentTime())
+      if (Math.abs(window.data.youtubeTimeSecondary - player.getCurrentTime()) > 1) {
+        console.error('seeking secondary', window.data.youtubeTimeSecondary)
+        window.data.youtubeTimeSecondary += 3
+        player.seekTo(window.data.youtubeTimeSecondary)
+      }
+      
+      console.error('videoPlaying')
+      window.data.videoPlayingIntervalSecondary = setInterval(function() {
+        window.data.youtubeTimeSecondary = Math.round(player.getCurrentTime())
       }, 1000)
     },
     
