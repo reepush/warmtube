@@ -2,109 +2,136 @@
 <meta charset="utf-8">
 
 <div id='app'>
-  <div class='chat'>
-    <div class='chat__messages' v-for='message in messages'>
-      <div class='chat__message' v-bind:style='{ color: message.color }'>{{message.content}}</div>
-    </div>
-    
-    <input autofocus
-           placeholder='you are nice'
-           class='chat__input'
-           v-model='input'
-           v-on:keyup.enter='send'>
-  </div>
-  
-  <div class='youtube'>
-    <input placeholder='youtube'
-           v-model='youtubeLinkInputPrimary'
-           v-on:keyup.enter='postYoutubePrimary'>
-           
-    <input placeholder='youtube'
-           v-model='youtubeLinkInputSecondary'
-           v-on:keyup.enter='postYoutubeSecondary'>
-           
-    <youtube :video-id='youtubeIdPrimary' @ready='videoReadyPrimary' @playing='videoPlayingPrimary' :player-vars='{ autoplay: 1 }'></youtube>
-    <youtube :video-id='youtubeIdSecondary' @ready='videoReadySecondary' @playing='videoPlayingSecondary' :player-vars='{ autoplay: 1 }'></youtube>
-    
-    <input type='range' @input='faderChange' v-model='faderValue' />
-  </div>
+  <canvas id='canvas' style="width: 1400px; height: 900px"></canvas>
 </div>
 
 <style>
-  input {
-    text-align: center;
-  }
-
-  .chat {
-    width: 300px;
-    margin: auto;
-    margin-bottom: 20px;
-  }
-  
-  .chat__input {
-    margin-top: 10px;
-    width: 100%;
-  }
-
-
   body {
-    background-color: black;
+    margin: 0;
   }
-  
-  .youtube {
-    display: flex;
-    flex-wrap: wrap;
-      justify-content: space-between;
-  }
-  
-  .youtube input {
-    max-width: 640px;
-    width: 50%;
-  }
-  
-  input[type='range'] {
-    margin: auto;
-    width: 175px;
-    margin-top: 20px;
-  }
-  
-  #app {
-    max-width: 1400px;
-    margin: auto;
-  }
-  
+
   /* let's pretend that i don't give a fuck about the rules */
 </style>
 
-
-<script src="https://unpkg.com/vue@2.5.13/dist/vue.js"></script>
-<script src="https://unpkg.com/vue-youtube-embed@2.1.3/lib/vue-youtube-embed.js"></script>
+<script src="https://unpkg.com/paper@0.11.5/dist/paper-full.min.js"></script>
 <script src="https://unpkg.com/socket.io-client@2.0.4/dist/socket.io.slim.js"></script>
+
+<script>
+window.onload = function() {
+  var canvas = document.getElementById('canvas');
+  paper.install(window)
+  paper.setup(canvas);
+  
+  tool = new Tool()
+  tool.onMouseDrag = onMouseDrag
+  tool.onMouseDown = onMouseDown
+  tool.onMouseUp = onMouseUp
+
+  var myPath;
+
+  function onMouseDown(event) {
+  	myPath = new Path();
+  	myPath.strokeColor = 'black';
+    
+    pendingRequest = false
+    socket.emit('mousedown', { point: event.point })
+  }
+
+  function onMouseDownSynthetic(event) {
+  	myPath = new Path();
+  	myPath.strokeColor = 'black';
+  }
+
+  mouseDragEvents = []
+  function onMouseDrag(event) {
+  	myPath.add(event.point);
+    
+    mouseDragEvents.push({ point: event.point })
+    if (mouseDragEvents.length > 30) {
+      console.error('emmiting')
+      
+      pendingRequest = false
+      socket.emit('mousedrag', {
+        mouseDragEvents: mouseDragEvents
+      })
+      
+      mouseDragEvents = []
+    }
+  }
+
+  function onMouseDragSynthetic(event) {
+  	myPath.add(event.point);
+  }
+
+  function onMouseUp(event) {
+  	var myCircle = new Path.Circle({
+  		center: event.point,
+  		radius: 10
+  	});
+  	myCircle.strokeColor = 'black';
+  	myCircle.fillColor = 'white';
+    
+    pendingRequest = false
+    socket.emit('mouseup', { point: event.point })
+  }
+
+  function onMouseUpSynthetic(event) {
+  	var myCircle = new Path.Circle({
+  		center: event.point,
+  		radius: 10
+  	});
+  	myCircle.strokeColor = 'black';
+  	myCircle.fillColor = 'white';
+  }
+}
+</script>
+
 <script>
   id = Math.random()
-  Vue.use(VueYouTubeEmbed.default)
   
   var socket = io()
-  socket.on('message', function (data) {
+  socket.on('mousedrag', function (data) {
+    console.error('on mousedrag')
     if (pendingRequest) {
       pendingRequest = false
       return
     }
     
-    console.error('Receiving', data)
-    Object.assign(window.data, data)
-    window.app.faderChange(null, true)
+    console.error(mouseDragEvents)
+    data.mouseDragEvents.forEach(event => {
+      onMouseDragSynthetic(event)
+    })
+  });
+  
+  socket.on('mouseup', function (data) {
+    console.error('on mouseup')
+    if (pendingRequest) {
+      pendingRequest = false
+      return
+    }
+    
+    onMouseUpSynthetic(event)
+  });
+  
+  socket.on('mousedown', function (data) {
+    if (pendingRequest) {
+      pendingRequest = false
+      return
+    }
+    
+    onMouseDownSynthetic(event)
   });
 
   socket.on('request', function (data) {
+    console.error('request')
     if (pendingRequest) {
       pendingRequest = false
       return
     }
     
-    notify()
+    // notify()
   });
-
+  
   pendingRequest = true
   socket.emit('request')
 
@@ -122,104 +149,4 @@
     })
   }
 
-  window.data = {
-    color: ['yellow', 'green', 'orange', 'gold', 'purple'][Math.floor(Math.random() * 5)],
-    input: '',
-    youtubeLinkInputPrimary: '',
-    youtubeLinkInputSecondary: '',
-    
-    youtubeIdPrimary: 'p45fsJdjN4M',
-    youtubeIdSecondary: 'SWzqTQgNYyw',
-    youtubeTimePrimary: 0,
-    youtubeTimeSecondary: 0,
-    messages: [],
-    faderValue: 0,
-    
-    videoReadyPrimary: function(player) {
-      window.app.playerPrimary = player
-      setTimeout(() => {
-        player.playVideo()
-      }, 1000)
-      
-      console.error('setting primary volume', 100 - window.app.faderValue)
-      window.app.playerPrimary.setVolume(100 - window.app.faderValue)
-    },
-    
-    videoReadySecondary: function(player) {
-      window.app.playerSecondary = player
-      setTimeout(() => {
-        player.playVideo()
-      }, 1000)
-      
-      console.error('setting secondary volume', window.app.faderValue)
-      window.app.playerSecondary.setVolume(window.app.faderValue)
-    },
-    
-    faderChange(event, noNOtify) {
-      console.error('faderChange: player secondary volume is', window.app.faderValue)
-      console.error('faderChange')
-      window.app.playerPrimary && window.app.playerPrimary.setVolume(100 - window.app.faderValue)
-      window.app.playerSecondary && window.app.playerSecondary.setVolume(window.app.faderValue)
-      
-      if (!noNOtify) notify()
-    },
-    
-    videoPlayingIntervalPrimary: null,
-    videoPlayingIntervalSecondary: null,
-    
-    videoPlayingPrimary: function(player) {
-      console.error('playing')
-      clearInterval(window.data.videoPlayingIntervalPrimary)
-      
-      console.error(window.data.youtubeTimePrimary, player.getCurrentTime())
-      if (Math.abs(window.data.youtubeTimePrimary - player.getCurrentTime()) > 1) {
-        console.error('seeking')
-        window.data.youtubeTimePrimary += 3
-        player.seekTo(window.data.youtubeTimePrimary)
-      }
-      
-      console.error('videoPlaying')
-      window.data.videoPlayingIntervalPrimary = setInterval(function() {
-        window.data.youtubeTimePrimary = Math.round(player.getCurrentTime())
-      }, 1000)
-    },
-    
-    videoPlayingSecondary: function(player) {
-      console.error('playing secondary')
-      clearInterval(window.app.videoPlayingIntervalSecondary)
-      
-      console.error(window.data.youtubeTimeSecondary, player.getCurrentTime())
-      if (Math.abs(window.data.youtubeTimeSecondary - player.getCurrentTime()) > 1) {
-        console.error('seeking secondary', window.data.youtubeTimeSecondary)
-        window.data.youtubeTimeSecondary += 3
-        player.seekTo(window.data.youtubeTimeSecondary)
-      }
-      
-      console.error('videoPlaying')
-      window.data.videoPlayingIntervalSecondary = setInterval(function() {
-        window.data.youtubeTimeSecondary = Math.round(player.getCurrentTime())
-      }, 1000)
-    },
-    
-    send: () => {
-      window.data.messages.push({ content: window.data.input, color: window.data.color })
-      window.data.input = ''
-      notify()
-    },
-    postYoutubePrimary: () => {
-      window.data.youtubeIdPrimary = VueYouTubeEmbed.getIdFromURL(window.data.youtubeLinkInputPrimary)
-      window.data.youtubeLinkInputPrimary = ''
-      notify()
-    },
-    postYoutubeSecondary: () => {
-      window.data.youtubeIdSecondary = VueYouTubeEmbed.getIdFromURL(window.data.youtubeLinkInputSecondary)
-      window.data.youtubeLinkInputSecondary = ''
-      notify()
-    },
-  }
-
-  window.app = new Vue({
-    el: '#app',
-    data: window.data
-  })
 </script>
